@@ -1,0 +1,66 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', 'source/core/**', 'source/third_party/**', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['android/**', 'source/core/**', 'source/third_party/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # The core and the Android engine, tested on the runner itself (fast, no phone needed).
+      - name: Host tests
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq zlib1g-dev g++
+          android/tests/run_host_tests.sh
+
+      - name: Android SDK and NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Optional: add these repository secrets to sign with your own key (so updates install over each other):
+      # COMPENDIUM_KEYSTORE_B64 (the .jks file, base64), COMPENDIUM_KEYSTORE_PASSWORD, COMPENDIUM_KEY_ALIAS, COMPENDIUM_KEY_PASSWORD
+      - name: Signing key (if provided)
+        env:
+          KS_B64: ${{ secrets.COMPENDIUM_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/compendium.jks"
+            echo "COMPENDIUM_KEYSTORE=$RUNNER_TEMP/compendium.jks" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build APK
+        working-directory: android
+        env:
+          COMPENDIUM_KEYSTORE_PASSWORD: ${{ secrets.COMPENDIUM_KEYSTORE_PASSWORD }}
+          COMPENDIUM_KEY_ALIAS: ${{ secrets.COMPENDIUM_KEY_ALIAS }}
+          COMPENDIUM_KEY_PASSWORD: ${{ secrets.COMPENDIUM_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Name the APK
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/*.apk dist/Compendium-Android-arm64.apk
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Compendium-Android-arm64
+          path: dist/Compendium-Android-arm64.apk
+          if-no-files-found: error
