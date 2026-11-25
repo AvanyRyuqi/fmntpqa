@@ -1,0 +1,11 @@
+CMake Error at CMakeLists.txt:21 (include):
+  include could not find requested file:
+
+    /__w/fmntpqa/fmntpqa/library/borealis/library/cmake/commonOption.cmake
+
+
+CMake Error at CMakeLists.txt:23 (cmake_dependent_option):
+  Unknown CMake command "cmake_dependent_option".
+
+
+-- Configuring incomplete, errors occurred!
